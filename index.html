@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>ChainWise Faucet</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    /* Общие стили */
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f9f9f9;
+      color: #333;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+      padding-top: 50px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 500px;
+      margin: 0 20px;
+    }
+
+    h2 {
+      text-align: center;
+      font-size: 2em;
+      margin-bottom: 20px;
+      color: #222;
+    }
+
+    /* Карточки */
+    .card {
+      background-color: #fff;
+      border-radius: 12px;
+      padding: 25px;
+      margin-bottom: 20px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+      transition: transform 0.2s;
+    }
+
+    .card:hover {
+      transform: translateY(-3px);
+    }
+
+    /* Кнопки */
+    button {
+      background-color: #4caf50;
+      color: #fff;
+      border: none;
+      padding: 12px 24px;
+      margin: 10px 0;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+      width: 100%;
+      transition: 0.3s;
+    }
+
+    button:hover {
+      background-color: #45a049;
+      transform: scale(1.03);
+    }
+
+    p {
+      margin: 10px 0;
+      font-size: 16px;
+      color: #555;
+    }
+
+    #status {
+      margin-top: 15px;
+      font-weight: bold;
+      color: #d32f2f;
+      min-height: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>ChainWise Faucet</h2>
+
+    <div class="card">
+      <button id="addNetBtn">Добавить BNB Testnet</button>
+      <button id="addTokenBtn">Добавить ChainWise в MetaMask</button>
+      <button id="connectBtn">Подключить кошелёк</button>
+      <p>Ваш аккаунт: <span id="account">Не подключен</span></p>
+      <p>Баланс CWS: <span id="balance">-</span></p>
+    </div>
+
+    <div class="card">
+      <button id="claimBtn">Получить 50 CWS</button>
+      <p id="status"></p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.min.js"></script>
+  <script>
+    const tokenAddress = "0xa8542748777D7Bb251035273377A9c97B236ABF6"; 
+    const faucetAddress = "0xFaAA7C709A4b1859ae82e79c11815e117e1d1a80"; 
+    const tokenABI = ["function balanceOf(address) view returns (uint256)","function decimals() view returns (uint8)"];
+    const faucetABI = ["function claim()","function amountPerClaim() view returns (uint256)","function cooldown() view returns (uint256)"];
+    let provider, signer, account, tokenContract, faucetContract;
+
+    document.getElementById("addNetBtn").onclick = async () => {
+      try {
+        await ethereum.request({
+          method: 'wallet_addEthereumChain',
+          params: [{
+            chainId: '0x61',
+            chainName: 'BNB Smart Chain Testnet',
+            rpcUrls: ['https://data-seed-prebsc-1-s1.binance.org:8545/'],
+            nativeCurrency: { name: 'tBNB', symbol: 'tBNB', decimals: 18 },
+            blockExplorerUrls: ['https://testnet.bscscan.com']
+          }]
+        });
+        alert("Сеть добавлена / переключись на BNB Testnet");
+      } catch (e) { console.error(e); alert("Ошибка добавления сети"); }
+    };
+
+    document.getElementById("addTokenBtn").onclick = async () => {
+      try { await ethereum.request({
+        method: 'wallet_watchAsset',
+        params: { type: 'ERC20', options: { address: tokenAddress, symbol: 'CWS', decimals: 18 } }
+      }); } catch (e) { console.error(e); alert("Ошибка при добавлении токена"); }
+    };
+
+    document.getElementById("connectBtn").onclick = async () => {
+      if (!window.ethereum) return alert("Установи MetaMask");
+      await ethereum.request({ method: 'eth_requestAccounts' });
+      provider = new ethers.providers.Web3Provider(window.ethereum);
+      signer = provider.getSigner();
+      account = await signer.getAddress();
+      document.getElementById("account").innerText = account;
+      tokenContract = new ethers.Contract(tokenAddress, tokenABI, provider);
+      faucetContract = new ethers.Contract(faucetAddress, faucetABI, signer);
+      await refreshBalance();
+    };
+
+    async function refreshBalance() {
+      try {
+        const bal = await tokenContract.balanceOf(account);
+        const decimals = await tokenContract.decimals();
+        document.getElementById("balance").innerText = ethers.utils.formatUnits(bal, decimals);
+      } catch (e) { console.error(e); document.getElementById("balance").innerText = "-"; }
+    }
+
+    document.getElementById("claimBtn").onclick = async () => {
+      if (!faucetContract) return alert("Подключи MetaMask сначала");
+      try {
+        document.getElementById("status").innerText = "Подпись транзакции...";
+        const tx = await faucetContract.claim();
+        document.getElementById("status").innerText = "Транзакция отправлена: " + tx.hash;
+        await tx.wait();
+        document.getElementById("status").innerText = "Успешно! Токены отправлены. Обновляю баланс...";
+        await refreshBalance();
+      } catch (err) {
+        console.error(err);
+        document.getElementById("status").innerText = "Ошибка: " + (err?.data?.message || err.message || err);
+      }
+    };
+  </script>
+</body>
+</html>
